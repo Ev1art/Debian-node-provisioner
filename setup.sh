@@ -91,13 +91,42 @@ KbdInteractiveAuthentication no
 EOF
 
 # 3. Проверяем синтаксис конфигов SSH перед перезапуском
-  if sshd -t; then
-    echo "Конфигурация правильная, перезапускаю службу..."
-    systemctl reload ssh
+if sshd -t; then
+  echo "Конфигурация правильная, перезапускаем службу SSH..."
+  systemctl enable ssh || true
+  systemctl restart ssh || systemctl reload ssh
 else
-    echo "ОШИБКА: Ошибка в конфиге SSH! Изменения не применены."
-    rm -f /etc/ssh/sshd_config.d/99-hardening.conf
-    exit 1
+  echo "ОШИБКА: Ошибка в конфиге SSH! Изменения не применены."
+  rm -f /etc/ssh/sshd_config.d/99-hardening.conf
+  exit 1
+fi
+
+
+echo "=== [3.5/6] Установка Docker и Docker Compose ==="
+
+if ! command -v docker &> /dev/null; then
+  echo "Устанавливаем официальный Docker Engine..."
+  
+  # Подготовка ключей keyring
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+
+  # Добавление официального репозитория Docker
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  # Обновление и установка Docker
+  apt-get update -o Dpkg::Lock::Timeout=60
+  apt-get install -y $APT_OPTS docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  systemctl enable docker
+  systemctl start docker
+  echo "Docker успешно установлен!"
+else
+  echo "Docker уже установлен, пропускаем установку."
 fi
 
 
